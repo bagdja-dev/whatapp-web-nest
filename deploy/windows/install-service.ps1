@@ -37,7 +37,7 @@ Write-Host "== Validasi prasyarat ==" -ForegroundColor Cyan
 Assert-PathExists -Path $NssmPath -Description "nssm.exe"
 Assert-PathExists -Path $NodeExe -Description "node.exe"
 Assert-PathExists -Path $AppDir -Description "Folder aplikasi (AppDir)"
-Assert-PathExists -Path (Join-Path $AppDir $EntryPoint) -Description "Entry point ($EntryPoint) — jalankan 'npm run build' dulu di server"
+Assert-PathExists -Path (Join-Path $AppDir $EntryPoint) -Description "Entry point ($EntryPoint) - jalankan 'npm run build' dulu di server"
 Assert-PathExists -Path $ChromePath -Description "Chrome executable"
 
 $logDir = Join-Path $AppDir "logs"
@@ -45,8 +45,8 @@ if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir | Out-Null
 }
 
-$existing = & $NssmPath status $ServiceName 2>$null
-if ($LASTEXITCODE -eq 0) {
+$existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+if ($existingService) {
     Write-Host "== Service '$ServiceName' sudah ada, stop & remove dulu untuk reinstall ==" -ForegroundColor Yellow
     & $NssmPath stop $ServiceName confirm | Out-Null
     & $NssmPath remove $ServiceName confirm | Out-Null

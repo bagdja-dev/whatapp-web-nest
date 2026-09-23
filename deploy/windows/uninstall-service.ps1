@@ -17,8 +17,8 @@ if (-not (Test-Path $NssmPath)) {
     throw "nssm.exe tidak ditemukan di: $NssmPath"
 }
 
-$existing = & $NssmPath status $ServiceName 2>$null
-if ($LASTEXITCODE -ne 0) {
+$existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+if (-not $existingService) {
     Write-Host "Service '$ServiceName' tidak ditemukan, tidak ada yang perlu dihapus." -ForegroundColor Yellow
     exit 0
 }
