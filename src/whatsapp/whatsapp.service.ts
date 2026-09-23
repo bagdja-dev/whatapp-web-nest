@@ -14,9 +14,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   private client: InstanceType<typeof WAWebJS.Client> | null = null;
   private clientReady = false;
   private qrCodeData: string | null = null;
-  private recoveryTimer: NodeJS.Timeout | null = null;
-  private clientState = 'initializing';
-  private lastError: string | null = null;
 
   onModuleInit() {
     this.initializeClient();
@@ -34,59 +31,13 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   }
 
   getStatus() {
-    const isInitializing = !!this.client && !this.clientReady && !this.qrCodeData;
-
     return {
-      status: this.clientReady ? 'connected' : isInitializing ? 'connecting' : 'disconnected',
+      status: this.clientReady ? 'connected' : 'disconnected',
       connected: this.clientReady,
       message: this.clientReady
         ? 'WhatsApp sudah terhubung'
-        : isInitializing
-          ? 'WhatsApp sedang menyiapkan koneksi. Silakan tunggu QR Code muncul.'
-          : 'WhatsApp belum terhubung. Silakan scan QR Code terlebih dahulu.',
+        : 'WhatsApp belum terhubung. Silakan scan QR Code terlebih dahulu.',
       hasQrCode: !!this.qrCodeData,
-    };
-  }
-
-  getDetailedStatus() {
-    const base = this.getStatus();
-
-    return {
-      ...base,
-      clientState: this.clientState,
-      lastError: this.lastError,
-      hasClient: !!this.client,
-      qrReady: !!this.qrCodeData,
-      timestamp: new Date().toISOString(),
-    };
-  }
-
-  getConnectionSummary() {
-    if (this.clientReady) {
-      return {
-        connected: true,
-        status: 'connected',
-        message: 'WhatsApp sudah terhubung',
-        qrCode: null,
-      };
-    }
-
-    if (this.qrCodeData) {
-      return {
-        connected: false,
-        status: 'ready',
-        message: 'QR Code siap dipindai',
-        qrCode: this.qrCodeData,
-      };
-    }
-
-    return {
-      connected: false,
-      status: this.client ? 'connecting' : 'not_ready',
-      message: this.client
-        ? 'WhatsApp sedang menyiapkan koneksi. Silakan tunggu.'
-        : 'QR Code belum tersedia. Silakan tunggu beberapa saat.',
-      qrCode: null,
     };
   }
 
@@ -100,13 +51,9 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (!this.qrCodeData) {
-      const message = this.client
-        ? 'WhatsApp sedang menyiapkan QR Code. Silakan tunggu beberapa saat.'
-        : 'QR Code belum tersedia. Silakan tunggu beberapa saat.';
-
       return {
-        message,
-        status: this.client ? 'connecting' : 'not_ready',
+        message: 'QR Code belum tersedia. Silakan tunggu beberapa saat.',
+        status: 'not_ready',
         connected: false,
       };
     }
@@ -151,106 +98,48 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.client.on('loading_screen', (percent: number, message: string) => {
-      this.clientState = 'loading';
-      this.lastError = null;
       this.logger.log(`Loading: ${percent}% - ${message}`);
     });
 
     this.client.on('qr', async (qr: string) => {
-      this.clientState = 'qr_ready';
       try {
         this.qrCodeData = await QRCode.toDataURL(qr);
-        this.lastError = null;
         this.logger.log('QR Code generated successfully');
       } catch (error) {
         this.logger.error('Error generating QR code', error instanceof Error ? error.stack : error);
-        this.lastError = error instanceof Error ? error.message : 'Unknown QR generation error';
         this.qrCodeData = null;
       }
     });
 
     this.client.on('ready', () => {
       this.logger.log('WhatsApp Client is ready!');
-      this.clientState = 'ready';
       this.clientReady = true;
       this.qrCodeData = null;
-      this.lastError = null;
-      if (this.recoveryTimer) {
-        clearTimeout(this.recoveryTimer);
-        this.recoveryTimer = null;
-      }
     });
 
     this.client.on('authenticated', () => {
       this.logger.log('WhatsApp Client authenticated');
-      this.clientState = 'authenticated';
-      this.clientReady = true;
-      this.qrCodeData = null;
-      this.lastError = null;
     });
 
     this.client.on('auth_failure', (message: string) => {
       this.logger.error('Authentication failure:', message);
-      this.clientState = 'auth_failure';
       this.clientReady = false;
       this.qrCodeData = null;
-      this.lastError = message;
-      this.scheduleRecovery();
     });
 
     this.client.on('disconnected', (reason: string) => {
       this.logger.warn(`WhatsApp Client disconnected: ${reason}`);
-      this.clientState = 'disconnected';
       this.clientReady = false;
       this.qrCodeData = null;
-      this.lastError = reason;
-      this.scheduleRecovery();
     });
 
     this.client.on('change_state', (state: string) => {
-      this.clientState = state;
       this.logger.log(`Client state changed: ${state}`);
     });
 
     this.client.initialize().catch((error: unknown) => {
       this.logger.error('Error initializing client', error instanceof Error ? error.stack : error);
-      this.clientState = 'init_error';
-      this.clientReady = false;
-      this.qrCodeData = null;
-      this.lastError = error instanceof Error ? error.message : 'Unknown init error';
-      this.scheduleRecovery();
     });
-  }
-
-  private scheduleRecovery() {
-    if (this.recoveryTimer) {
-      return;
-    }
-
-    this.recoveryTimer = setTimeout(async () => {
-      this.recoveryTimer = null;
-
-      if (this.clientReady || this.qrCodeData) {
-        return;
-      }
-
-      this.logger.warn('Mencoba memulai ulang session WhatsApp untuk mendapatkan QR Code baru.');
-      try {
-        if (this.client) {
-          await this.client.destroy();
-        }
-      } catch (error) {
-        this.logger.warn('Gagal menghancurkan client lama', error instanceof Error ? error.message : error);
-      }
-
-      this.client = null;
-      this.clientReady = false;
-      this.qrCodeData = null;
-
-      const sessionPath = path.join(process.cwd(), '.wwebjs_auth');
-      await fs.rm(sessionPath, { recursive: true, force: true }).catch(() => undefined);
-      this.initializeClient();
-    }, 3000);
   }
 
   private normalizePhoneNumber(input: string) {

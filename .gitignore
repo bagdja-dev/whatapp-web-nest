@@ -14,9 +14,9 @@ yarn-error.log*
 .DS_Store
 
 # env
-.env
 !.env.example
 
 # local runtime
 .wwebjs_auth/
 .wwebjs_cache/
+config.bat

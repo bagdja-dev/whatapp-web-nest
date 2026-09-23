@@ -24,16 +24,6 @@ export class WhatsAppController {
     return this.whatsappService.getStatus();
   }
 
-  @Get('debug-state')
-  getDebugState() {
-    return this.whatsappService.getDetailedStatus();
-  }
-
-  @Get('connection')
-  getConnection() {
-    return this.whatsappService.getConnectionSummary();
-  }
-
   @Get('qrcode')
   async getQrCode(@Req() req: Request, @Res() res: Response) {
     const preferJson = req.headers.accept?.includes('application/json');
