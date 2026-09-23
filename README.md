@@ -70,6 +70,57 @@ $ mau deploy
 
 With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
 
+## Deploy ke Windows Server (NSSM)
+
+Aplikasi ini menggunakan `whatsapp-web.js` yang butuh Chrome/Chromium (via Puppeteer) untuk berjalan. Berikut cara menjalankannya sebagai Windows Service dengan [NSSM](https://nssm.cc), sehingga otomatis start saat boot dan restart sendiri kalau crash.
+
+### Prasyarat di server Windows
+
+- Node.js (versi sesuai `engines`/`@types/node` di `package.json`) sudah terinstall.
+- Google Chrome (atau Chromium/Edge) sudah terinstall, catat path executable-nya, misal:
+  `C:\Program Files\Google\Chrome\Application\chrome.exe`
+- [ffmpeg](https://www.gyan.dev/ffmpeg/builds/) terinstall dan ada di PATH — dibutuhkan `whatsapp-web.js` untuk fitur media/stiker.
+- [nssm.exe](https://nssm.cc/download) sudah didownload, misal ditaruh di `C:\Tools\nssm\nssm.exe`.
+
+### Langkah deploy
+
+1. Copy project ke server, misal ke `C:\apps\whatsapp-api-nest`.
+2. Install dependency & build (jalankan di server, bukan hasil copy dari mesin dev):
+   ```powershell
+   cd C:\apps\whatsapp-api-nest
+   npm ci --omit=dev
+   npm run build
+   ```
+3. Buka **PowerShell as Administrator**, lalu jalankan script yang sudah disiapkan di `deploy/windows/install-service.ps1`:
+   ```powershell
+   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+   .\deploy\windows\install-service.ps1 `
+     -AppDir "C:\apps\whatsapp-api-nest" `
+     -ChromePath "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+     -NssmPath "C:\Tools\nssm\nssm.exe"
+   ```
+   Script ini akan:
+   - Memvalidasi prasyarat (nssm.exe, node.exe, `dist/main.js`, Chrome executable) sebelum lanjut.
+   - Mendaftarkan service (default nama `WhatsAppApiNest`) dengan env `PORT` & `CHROME_PATH`.
+   - Mengarahkan log ke `logs/out.log` dan `logs/err.log` (dengan rotasi otomatis).
+   - Mengaktifkan auto-restart saat crash dan auto-start saat boot.
+   - Menjalankan service-nya.
+4. Cek status service:
+   ```powershell
+   C:\Tools\nssm\nssm.exe status WhatsAppApiNest
+   ```
+5. Scan QR Code pertama kali lewat `http://<host>:3030/api/qrcode` (atau endpoint image-nya sesuai header `Accept`), lalu cek status koneksi via `http://<host>:3030/api/status`.
+
+### Uninstall / redeploy
+
+- Untuk redeploy versi baru: build ulang (`npm run build`) lalu jalankan lagi `install-service.ps1` — script ini idempotent, service lama otomatis di-stop & di-reinstall.
+- Untuk menghapus service sepenuhnya, jalankan (elevated PowerShell):
+  ```powershell
+  .\deploy\windows\uninstall-service.ps1
+  ```
+
+> ⚠️ Endpoint `/api/*` pada aplikasi ini saat ini **belum memiliki autentikasi/API key**. Kalau server di-expose ke jaringan/internet, tambahkan proteksi (API key guard, reverse proxy dengan auth, atau firewall rule) sebelum go-live.
+
 ## Observability
 
 In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
